@@ -5,28 +5,66 @@
 
 <div class="@Classname" style="@Style"
      id="@($"mud-drop-zone-{_id}")"
-	 @ondrop="HandleDrop"
-	 @ondragenter="HandleDragEnter"
-	 @ondragleave="HandleDragLeave"
-	 @attributes="UserAttributes">
+     identifier="@Identifier"
+     @ondrop="HandleDrop"
+     @ondragenter="HandleDragEnter"
+     @ondragleave="HandleDragLeave"
+     @attributes="UserAttributes">
 
-	@ChildContent
+    @ChildContent
 
-	@foreach (var item in GetItems())
-	{
-		<MudDynamicDropItem @key="@(item.GetHashCode())" T="T" DraggingClass="@GetItemDraggingClass()"
-						Item="item"
-						OnDragStarted="DragOperationStarted"
-						OnDragEnded="FinishedDragOperation"
-						ZoneIdentifier="@Identifier"
-						Disabled="@GetItemDisabledStatus(item)"
-						DisabledClass="@(DisabledClass ?? Container?.DisabledClass)">
-			@{
-				var renderer = GetItemTemplate();
-			}
+    @if (OnlyZone != true)
+    {
+        int index = 0;
+        var transactionIndex = Container?.GetTransactionIndex() ?? -1;
+        var items = GetItems();
 
-			@renderer(item)
+        @if (AllowReorder == true)
+        {
+            @if (items.Any() == false)
+            {
+                <div class="@PlaceholderClassname"></div>
+            }
+            else
+            {
+                if (transactionIndex == -1)
+                {
+                    <div class="@PlaceholderClassname"></div>
+                }
+                <MudDynamicDropItem @key="_id" T="T"
+                        Item="default"
+                        ZoneIdentifier="@Identifier"
+                        Disabled="true" HideContent="false"
+                        Class="mud-drop-item-preview-start" />
+            }
+        }
+        @foreach (var item in items)
+        {
+            var indexCopy = index;
 
-		</MudDynamicDropItem>
-	}
+            <MudDynamicDropItem @key="@(item.GetHashCode())" T="T" DraggingClass="@GetItemDraggingClass()"
+                        Item="item"
+                        OnDragStarted="DragOperationStarted"
+                        OnDragEnded="FinishedDragOperation"
+                        ZoneIdentifier="@Identifier"
+                        Disabled="@GetItemDisabledStatus(item)"
+                        Index="indexCopy"
+                        DisabledClass="@(DisabledClass ?? Container?.DisabledClass)">
+                @{
+                    var renderer = GetItemTemplate();
+                }
+
+                @renderer(item)
+
+            </MudDynamicDropItem>
+
+
+            if (transactionIndex == indexCopy && IsOrign(indexCopy) == false)
+            {
+                <div class="@PlaceholderClassname"></div>
+            }
+
+            index++;
+        }
+    }
 </div>

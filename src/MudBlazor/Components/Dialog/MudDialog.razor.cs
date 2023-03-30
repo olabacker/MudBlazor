@@ -4,6 +4,7 @@
 
 using System;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using MudBlazor.Utilities;
 
 namespace MudBlazor
@@ -20,6 +21,7 @@ namespace MudBlazor
         .Build();
 
         [CascadingParameter] private MudDialogInstance DialogInstance { get; set; }
+        [CascadingParameter(Name = "IsNested")] private bool IsNested { get; set; }
 
         [Inject] public IDialogService DialogService { get; set; }
 
@@ -51,6 +53,16 @@ namespace MudBlazor
         [Parameter]
         [Category(CategoryTypes.Dialog.Misc)]  // Behavior and Appearance
         public DialogOptions Options { get; set; }
+
+        /// <summary>
+        /// Defines delegate with custom logic when user clicks overlay behind dialogue.
+        /// Is being invoked instead of default "Backdrop Click" logic.
+        /// Setting DisableBackdropClick to "true" disables both - OnBackdropClick as well
+        /// as the default logic.
+        /// </summary>
+        [Parameter]
+        [Category(CategoryTypes.Dialog.Behavior)]
+        public EventCallback<MouseEventArgs> OnBackdropClick { get; set; }
 
         /// <summary>
         /// No padding at the sides
@@ -93,13 +105,6 @@ namespace MudBlazor
                 if (_isVisible == value)
                     return;
                 _isVisible = value;
-                if (IsInline)
-                {
-                    if (_isVisible)
-                        Show();
-                    else
-                        Close();
-                }
                 IsVisibleChanged.InvokeAsync(value);
             }
         }
@@ -110,7 +115,14 @@ namespace MudBlazor
         /// </summary>
         [Parameter] public EventCallback<bool> IsVisibleChanged { get; set; }
 
-        private bool IsInline => DialogInstance == null;
+        /// <summary>
+        /// Define the dialog title as a renderfragment (overrides Title)
+        /// </summary>
+        [Parameter]
+        [Category(CategoryTypes.Dialog.Behavior)]
+        public DefaultFocus DefaultFocus { get; set; }
+
+        private bool IsInline => IsNested || DialogInstance == null;
 
         private IDialogReference _reference;
 
@@ -137,6 +149,7 @@ namespace MudBlazor
                 [nameof(DisableSidePadding)] = DisableSidePadding,
                 [nameof(ClassContent)] = ClassContent,
                 [nameof(ClassActions)] = ClassActions,
+                [nameof(ContentStyle)] = ContentStyle,
             };
             _reference = DialogService.Show<MudDialog>(title, parameters, options ?? Options);
             _reference.Result.ContinueWith(t =>
@@ -149,16 +162,20 @@ namespace MudBlazor
 
         protected override void OnAfterRender(bool firstRender)
         {
-            if (IsInline && _reference != null)
-                (_reference.Dialog as MudDialog)?.ForceUpdate(); // forward render update to instance
-            // Note by Henon: this caused bug #3701
-            // if (IsInline)
-            // {
-            //     if (_isVisible)
-            //         Show();
-            //     else
-            //         Close();
-            // }
+            if (IsInline)
+            {
+                if (_isVisible && _reference == null)
+                {
+                    Show(); // if isVisible and we don't have any reference we need to call Show
+                }
+                else if (_reference != null)
+                {
+                    if (IsVisible)
+                        (_reference.Dialog as MudDialog)?.ForceUpdate(); // forward render update to instance
+                    else
+                        Close(); // if we still have reference but it's not visible call Close
+                }
+            }
             base.OnAfterRender(firstRender);
         }
 
@@ -185,7 +202,8 @@ namespace MudBlazor
         protected override void OnInitialized()
         {
             base.OnInitialized();
-            DialogInstance?.Register(this);
+            if (!IsNested)
+                DialogInstance?.Register(this);
         }
     }
 }

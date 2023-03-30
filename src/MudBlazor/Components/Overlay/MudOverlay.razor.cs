@@ -96,7 +96,7 @@ namespace MudBlazor
         public bool LightBackground { get; set; }
 
         /// <summary>
-        /// Icon class names, separated by space
+        /// If true, use absolute positioning for the overlay.
         /// </summary>
         [Parameter]
         [Category(CategoryTypes.Overlay.Behavior)]
@@ -128,7 +128,7 @@ namespace MudBlazor
         /// </summary>
         [Parameter]
         public EventCallback<MouseEventArgs> OnClick { get; set; }
-        protected void OnClickHandler(MouseEventArgs ev)
+        protected internal void OnClickHandler(MouseEventArgs ev)
         {
             if (AutoClose)
                 Visible = false;
