@@ -18,7 +18,7 @@ namespace MudBlazor
         {
             get
             {
-                return (_dataGrid.ServerData == null) ? _dataGrid.Items : _dataGrid.ServerItems;
+                return (_dataGrid.ServerData == null) ? _dataGrid.FilteredItems : _dataGrid.ServerItems;
             }
         }
 
@@ -29,7 +29,7 @@ namespace MudBlazor
             get
             {
                 
-                if (_dataGrid.Selection != null && Items != null)
+                if (_dataGrid.Selection != null && (Items?.Any() ?? false))
                 {
                     return _dataGrid.Selection.Count == Items.Count();
                 }

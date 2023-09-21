@@ -20,6 +20,7 @@ namespace MudBlazor
     [CascadingTypeParameter(nameof(T))]
     public partial class MudDataGrid<T> : MudComponentBase
     {
+        private Func<IFilterDefinition<T>> _defaultFilterDefinitionFactory = () => new FilterDefinition<T>();
         private int _currentPage = 0;
         internal int? _rowsPerPage;
         private bool _isFirstRendered = false;
@@ -27,12 +28,12 @@ namespace MudBlazor
         private bool _columnsPanelVisible = false;
         private IEnumerable<T> _items;
         private T _selectedItem;
-        internal HashSet<object> _groupExpansions = new HashSet<object>();
+        internal Dictionary<object, bool> _groupExpansionsDict = new Dictionary<object, bool>();
         private List<GroupDefinition<T>> _currentPageGroups = new List<GroupDefinition<T>>();
         private List<GroupDefinition<T>> _allGroups = new List<GroupDefinition<T>>();
         internal HashSet<T> _openHierarchies = new HashSet<T>();
         private PropertyInfo[] _properties = typeof(T).GetProperties();
-
+        private MudDropContainer<Column<T>> _dropContainer;
         protected string _classname =>
             new CssBuilder("mud-table")
                .AddClass("mud-data-grid")
@@ -63,10 +64,10 @@ namespace MudBlazor
         protected string _tableStyle =>
             new StyleBuilder()
                 .AddStyle("height", Height, !string.IsNullOrWhiteSpace(Height))
-                .AddStyle("width", "max-content", when: (HorizontalScrollbar || ColumnResizeMode == ResizeMode.Container) && !hasStickyColumns)
+                .AddStyle("width", "max-content", when: (HorizontalScrollbar || ColumnResizeMode == ResizeMode.Container))
+                .AddStyle("overflow", "clip", when: (HorizontalScrollbar || ColumnResizeMode == ResizeMode.Container) && hasStickyColumns)
                 .AddStyle("display", "block", when: HorizontalScrollbar)
             .Build();
-
         protected string _tableClass =>
             new CssBuilder("mud-table-container")
                 .AddClass("cursor-col-resize", when: IsResizing)
@@ -77,6 +78,11 @@ namespace MudBlazor
 
         protected string _footClassname => new CssBuilder("mud-table-foot")
             .AddClass(FooterClass).Build();
+        protected string _headerFooterStyle =>
+            new StyleBuilder()
+                .AddStyle("position", "sticky", when: hasStickyColumns)
+                .AddStyle("left", "0px", when: hasStickyColumns)
+            .Build();
 
         internal SortDirection GetColumnSortDirection(string columnName)
         {
@@ -109,6 +115,41 @@ namespace MudBlazor
 
                 return (int)Math.Ceiling(FilteredItems.Count() / (double)RowsPerPage);
             }
+        }
+
+        internal static bool RenderedColumnsItemsSelector(Column<T> item, string dropZone) => item?.PropertyName == dropZone;
+
+        private static void Swap<TItem>(List<TItem> list, int indexA, int indexB)
+        {
+            TItem tmp = list[indexA];
+            list[indexA] = list[indexB];
+            list[indexB] = tmp;
+        }
+
+        private Task ItemUpdatedAsync(MudItemDropInfo<Column<T>> dropItem)
+        {
+            dropItem.Item.Identifier = dropItem.DropzoneIdentifier;
+
+            var dragAndDropSource = RenderedColumns.Where(rc => rc.PropertyName == dropItem.Item.PropertyName).SingleOrDefault();
+            var dragAndDropDestination = RenderedColumns.Where(rc => rc.PropertyName == dropItem.DropzoneIdentifier).SingleOrDefault();
+            if (dragAndDropSource != null && dragAndDropDestination != null)
+            {
+                var dragAndDropSourceIndex = RenderedColumns.IndexOf(dragAndDropSource);
+                var dragAndDropDestinationIndex = RenderedColumns.IndexOf(dragAndDropDestination);
+
+                Swap<Column<T>>(RenderedColumns, dragAndDropSourceIndex, dragAndDropDestinationIndex);
+
+                // swap source / destination
+                var dest = dragAndDropDestination.HeaderCell.Width;
+                var src = dragAndDropSource.HeaderCell.Width;
+
+                dragAndDropSource.HeaderCell.Width = dest;
+                dragAndDropDestination.HeaderCell.Width = src;
+
+                StateHasChanged();
+            }
+            return Task.CompletedTask;
+            
         }
 
         public readonly List<Column<T>> RenderedColumns = new List<Column<T>>();
@@ -185,6 +226,39 @@ namespace MudBlazor
         #endregion
 
         #region Parameters
+
+        /// <summary>
+        /// If true, the columns in the DataGrid can be reordered via drag and drop. This is overridable by each column.
+        /// </summary>
+        [Parameter] public bool DragDropColumnReordering { get; set; } = false;
+
+        /// <summary>
+        /// Custom drag indicator icon in the header which shows up on mouse over. 
+        /// </summary>
+        [Parameter] public string DragIndicatorIcon { get; set; } = Icons.Material.Filled.DragIndicator;
+
+        /// <summary>
+        /// Size of the DragIndicatorIcon.
+        /// </summary>
+        [Parameter] public Size DragIndicatorSize { get; set; } = Size.Small;
+
+        /// <summary>
+        /// Css class that is applied to column headers while dragging to indicate that the dragged column can be dropped on a column. 
+        /// </summary>
+        [Parameter] public string DropAllowedClass { get; set; } = "drop-allowed";
+
+        /// <summary>
+        /// Css class that is applied to column headers while dragging to indicate that the dragged column can not be dropped on a column. 
+        /// </summary>
+        [Parameter] public string DropNotAllowedClass { get; set; } = "drop-not-allowed";
+
+        /// <summary>
+        /// When false the drop classes are only applied when dragging a column over another column
+        /// When true the drop classes are applied to all column headers and does not require dragging a column over another column.
+        /// </summary>
+        [Parameter] public bool ApplyDropClassesOnDragStarted { get; set; } = false;
+
+
 
         /// <summary>
         /// Controls whether data in the DataGrid can be sorted. This is overridable by each column.
@@ -283,7 +357,7 @@ namespace MudBlazor
         /// grid automatically when using the built in filter UI. You can also programmatically manage these definitions
         /// through this collection.
         /// </summary>
-        [Parameter] public List<FilterDefinition<T>> FilterDefinitions { get; set; } = new List<FilterDefinition<T>>();
+        [Parameter] public List<IFilterDefinition<T>> FilterDefinitions { get; set; } = new List<IFilterDefinition<T>>();
 
         /// <summary>
         /// The list of SortDefinitions that have been added to the data grid. SortDefinitions are managed by the data
@@ -305,6 +379,11 @@ namespace MudBlazor
         /// Only used for virtualization.
         /// </summary>
         [Parameter] public int OverscanCount { get; set; } = 3;
+
+        /// <summary>
+        /// Gets the size of each item in pixels. Defaults to 50px.
+        /// </summary>
+        [Parameter] public float ItemSize { get; set; } = 50f;
 
         /// <summary>
         /// CSS class for the table rows. Note, many CSS settings are overridden by MudTd though
@@ -330,6 +409,11 @@ namespace MudBlazor
         /// Set to true to enable selection of multiple rows.
         /// </summary>
         [Parameter] public bool MultiSelection { get; set; }
+
+        /// <summary>
+        /// When true, row-click also toggles the checkbox state
+        /// </summary>
+        [Parameter] public bool SelectOnRowClick { get; set; } = true;
 
         /// <summary>
         /// When the grid is not read only, you can specify what type of editing mode to use.
@@ -371,9 +455,9 @@ namespace MudBlazor
                 }
 
                 // Setup ObservableCollection functionality.
-                if (_items is INotifyCollectionChanged)
+                if (_items is INotifyCollectionChanged changed)
                 {
-                    (_items as INotifyCollectionChanged).CollectionChanged += (s, e) =>
+                    changed.CollectionChanged += (s, e) =>
                     {
                         _currentRenderFilteredItemsCache = null;
                         if (Groupable)
@@ -586,8 +670,7 @@ namespace MudBlazor
                     {
                         _currentPageGroups.Clear();
                         _allGroups.Clear();
-                        _groupExpansions.Clear();
-                        _groupExpansions.Add("__initial__");
+                        _groupExpansionsDict.Clear();
 
                         foreach (var column in RenderedColumns)
                             column.RemoveGrouping();
@@ -682,11 +765,16 @@ namespace MudBlazor
                     items = items.Where(QuickFilter);
                 }
 
-                foreach (var f in FilterDefinitions)
+                if (ServerData is null)
                 {
-                    f.DataGrid = this;
-                    var filterFunc = f.GenerateFilterFunction();
-                    items = items.Where(filterFunc);
+                    foreach (var filterDefinition in FilterDefinitions)
+                    {
+                        var filterFunc = filterDefinition.GenerateFilterFunction(new FilterOptions
+                        {
+                            FilterCaseSensitivity = FilterCaseSensitivity
+                        });
+                        items = items.Where(filterFunc);
+                    }
                 }
 
                 _currentRenderFilteredItemsCache = Sort(items).ToList(); // To list to ensure evaluation only once per render
@@ -742,8 +830,6 @@ namespace MudBlazor
             if (firstRender)
             {
                 await InvokeServerLoadFunc();
-                GroupItems();
-                _groupExpansions.Add("__initial__");                
                 if (ServerData == null)
                     StateHasChanged();
                 _isFirstRendered = true;
@@ -801,6 +887,7 @@ namespace MudBlazor
             };
 
             _server_data = await ServerData(state);
+            _currentRenderFilteredItemsCache = null;
 
             if (CurrentPage * RowsPerPage > _server_data.TotalItems)
                 CurrentPage = 0;
@@ -834,55 +921,85 @@ namespace MudBlazor
             }
         }
 
+        internal IFilterDefinition<T> CreateFilterDefinitionInstance()
+        {
+            return _defaultFilterDefinitionFactory();
+        }
+
+        /// <summary>
+        /// Specifies the default <see cref="IFilterDefinition{T}"/> to be used by <see cref="AddFilter"/> and <see cref="Column{T}.FilterContext"/>.
+        /// </summary>
+        public void SetDefaultFilterDefinition<TFilterDefinition>() where TFilterDefinition : IFilterDefinition<T>, new()
+        {
+            SetDefaultFilterDefinition(() => new TFilterDefinition());
+        }
+
+        /// <summary>
+        /// Specifies the default <see cref="IFilterDefinition{T}"/> to be used by <see cref="AddFilter"/> and <see cref="Column{T}.FilterContext"/>.
+        /// </summary>
+        /// <param name="factory">The factory function to create the default filter definition.</param>
+        public void SetDefaultFilterDefinition(Func<IFilterDefinition<T>> factory)
+        {
+            _defaultFilterDefinitionFactory = factory;
+        }
+
         /// <summary>
         /// Called by the DataGrid when the "Add Filter" button is pressed.
         /// </summary>
         public void AddFilter()
         {
             var column = RenderedColumns.FirstOrDefault(x => x.filterable);
-            FilterDefinitions.Add(new FilterDefinition<T>
-            {
-                Id = Guid.NewGuid(),
-                DataGrid = this,
-                //Field = column?.PropertyName,
-                Title = column?.Title,
-                //FieldType = column?.PropertyType,
-                PropertyExpression = column?.PropertyExpression,
-            });
+            var filterDefinition = CreateFilterDefinitionInstance();
+            filterDefinition.Id = Guid.NewGuid();
+            filterDefinition.Title = column?.Title;
+            filterDefinition.Column = column;
+            FilterDefinitions.Add(filterDefinition);
             _filtersMenuVisible = true;
             StateHasChanged();
         }
 
-        internal void ApplyFilters()
+        internal Task ApplyFiltersAsync()
         {
             _filtersMenuVisible = false;
-            InvokeServerLoadFunc().AndForget();
+            return InvokeServerLoadFunc();
         }
 
-        public void ClearFilters()
+        public Task ClearFiltersAsync()
         {
             FilterDefinitions.Clear();
+            return InvokeServerLoadFunc();
         }
 
-        public void AddFilter(FilterDefinition<T> definition)
+        public async Task AddFilterAsync(IFilterDefinition<T> definition)
         {
             FilterDefinitions.Add(definition);
             _filtersMenuVisible = true;
-            StateHasChanged();
+            await InvokeServerLoadFunc();
+            if (ServerData is null) StateHasChanged();
         }
 
-        internal void RemoveFilter(Guid id)
+        internal async Task RemoveFilterAsync(Guid id)
         {
             FilterDefinitions.RemoveAll(x => x.Id == id);
+            await InvokeServerLoadFunc();
             GroupItems();
         }
 
         internal async Task SetSelectedItemAsync(bool value, T item)
         {
             if (value)
+            {
                 Selection.Add(item);
+                SelectedItem = item;
+            }
             else
+            {
                 Selection.Remove(item);
+                if (item.Equals(SelectedItem))
+                {
+                    SelectedItem = default;
+                }
+            }
 
             await InvokeAsync(() => SelectedItemsChangedEvent.Invoke(SelectedItems));
             await SelectedItemsChanged.InvokeAsync(SelectedItems);
@@ -893,8 +1010,8 @@ namespace MudBlazor
         {
             var items = ServerData != null
                     ? ServerItems
-                    : Items;
-                    
+                    : FilteredItems;
+
             if (value)
                 Selection = new HashSet<T>(items);
             else
@@ -903,6 +1020,7 @@ namespace MudBlazor
             SelectedItemsChangedEvent?.Invoke(SelectedItems);
             SelectedAllItemsChangedEvent?.Invoke(value);
             await SelectedItemsChanged.InvokeAsync(SelectedItems);
+
             StateHasChanged();
         }
 
@@ -916,7 +1034,7 @@ namespace MudBlazor
 
             IOrderedEnumerable<T> orderedEnumerable = null;
 
-            foreach (var sortDefinition in SortDefinitions.Values.Where(sd => null != sd.SortFunc).OrderBy(sd => sd.Index))
+            foreach (var sortDefinition in SortDefinitions.Values.Where(sd => sd.SortFunc != null).OrderBy(sd => sd.Index))
             {
                 if (null == orderedEnumerable)
                     orderedEnumerable = sortDefinition.Descending ? items.OrderByDescending(item => sortDefinition.SortFunc(item), sortDefinition.Comparer)
@@ -1024,14 +1142,24 @@ namespace MudBlazor
         /// <summary>
         /// Sets the rows displayed per page when the data grid has an attached data pager.
         /// </summary>
-        /// <param name="size"></param>
-        public async Task SetRowsPerPageAsync(int size)
+        /// <param name="size">The page size.</param>
+        public Task SetRowsPerPageAsync(int size) => SetRowsPerPageAsync(size, true);
+
+        /// <summary>
+        /// Sets the rows displayed per page when the data grid has an attached data pager.
+        /// </summary>
+        /// <param name="size">The page size.</param>
+        /// <param name="resetPage">If <see langword="true"/>, resets <see cref="CurrentPage"/> to 0.</param>
+        public async Task SetRowsPerPageAsync(int size, bool resetPage)
         {
             if (_rowsPerPage == size)
                 return;
 
             _rowsPerPage = size;
-            CurrentPage = 0;
+
+            if (resetPage)
+                CurrentPage = 0;
+
             StateHasChanged();
 
             if (_isFirstRendered)
@@ -1118,7 +1246,7 @@ namespace MudBlazor
         /// <returns></returns>
         public async Task SetSelectedItemAsync(T item)
         {
-            if (MultiSelection)
+            if (MultiSelection && SelectOnRowClick)
             {
                 if (Selection.Contains(item))
                 {
@@ -1226,8 +1354,14 @@ namespace MudBlazor
             StateHasChanged();
         }
 
+        internal void DropContainerHasChanged()
+        {
+            _dropContainer?.Refresh();
+        }
+
+        
         public void GroupItems(bool noStateChange = false)
-        {          
+        {
             if (GroupedColumn == null)
             {
                 _currentPageGroups = new List<GroupDefinition<T>>();
@@ -1238,24 +1372,24 @@ namespace MudBlazor
             }
 
             var currentPageGroupings = CurrentPageItems.GroupBy(GroupedColumn.groupBy);
-            
-            // Maybe group Items to keep groups expanded after clearing a filter?
-            var allGroupings = FilteredItems.GroupBy(GroupedColumn.groupBy);
 
-            if (_groupExpansions.Count == 0 && GroupExpanded)
+            // Maybe group Items to keep groups expanded after clearing a filter?
+            var allGroupings = FilteredItems.GroupBy(GroupedColumn.groupBy).ToArray();
+
+            if (GetFilteredItemsCount() > 0)
             {
                 foreach (var group in allGroupings)
                 {
-                    _groupExpansions.Add(group.Key);
+                    _groupExpansionsDict.TryAdd(group.Key, GroupExpanded);
                 }
             }
 
             // construct the groups
             _currentPageGroups = currentPageGroupings.Select(x => new GroupDefinition<T>(x,
-                _groupExpansions.Contains(x.Key))).ToList();
+                _groupExpansionsDict[x.Key])).ToList();
 
             _allGroups = allGroupings.Select(x => new GroupDefinition<T>(x,
-                _groupExpansions.Contains(x.Key))).ToList();                
+                _groupExpansionsDict[x.Key])).ToList();                
 
             if ((_isFirstRendered || ServerData != null) && !noStateChange)
                 StateHasChanged();
@@ -1274,15 +1408,11 @@ namespace MudBlazor
 
         internal void ToggleGroupExpansion(GroupDefinition<T> g)
         {
-            if (_groupExpansions.Contains(g.Grouping.Key))
+            if (_groupExpansionsDict.TryGetValue(g.Grouping.Key, out var value))
             {
-                _groupExpansions.Remove(g.Grouping.Key);
+                _groupExpansionsDict[g.Grouping.Key] = !value;
             }
-            else
-            {
-                _groupExpansions.Add(g.Grouping.Key);
-            }
-
+ 
             GroupItems();
         }
 
@@ -1291,17 +1421,17 @@ namespace MudBlazor
             foreach (var group in _allGroups)
             {
                 group.IsExpanded = true;
-                _groupExpansions.Add(group.Grouping.Key);
+                _groupExpansionsDict[group.Grouping.Key] = true;
             }
         }
 
         public void CollapseAllGroups()
         {
-            _groupExpansions.Clear();
-            _groupExpansions.Add("__initial__");
-
             foreach (var group in _allGroups)
+            {
                 group.IsExpanded = false;
+                _groupExpansionsDict[group.Grouping.Key] = false;
+            }
         }
 
         #endregion

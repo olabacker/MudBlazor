@@ -16,13 +16,15 @@
              Style="@Style"
              Label="@Label" 
              Mask="@_mask"
-             @bind-Value="@Text" 
+             @bind-Value="@Text"
+             Immediate="@(ImmediateText && Editable)"
              Placeholder="@Placeholder"
              HelperText="@HelperText" 
              HelperTextOnFocus="@HelperTextOnFocus" 
              Variant="@Variant" 
              ReadOnly="@(!Editable || GetReadOnlyState())" 
              Disabled="@GetDisabledState()"
+             DisableUnderLine="@DisableUnderLine"
              OnAdornmentClick="ToggleState" 
              Adornment="@Adornment"
              AdornmentIcon="@AdornmentIcon" 
@@ -36,9 +38,7 @@
              ErrorText="@ErrorText"
              Clearable="@(GetReadOnlyState() ? false : Clearable)"
              OnClearButtonClick="@(() => Clear())"
-             @onclick="@(() => { if (!Editable) ToggleState(); })" 
-             @onkeydown="HandleKeyDown" 
-             />;
+             @onclick="OnClickAsync" />;
 
     protected virtual RenderFragment PickerContent => null;
 

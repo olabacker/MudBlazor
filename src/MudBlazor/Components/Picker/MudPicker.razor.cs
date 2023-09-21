@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
-using MudBlazor.Interfaces;
 using MudBlazor.Services;
 using MudBlazor.Utilities;
 
@@ -20,8 +18,6 @@ namespace MudBlazor
         [Inject] private IKeyInterceptorFactory _keyInterceptorFactory { get; set; }
 
         private string _elementId = "picker" + Guid.NewGuid().ToString().Substring(0, 8);
-
-        [Inject] private IBrowserWindowSizeProvider WindowSizeListener { get; set; }
 
         protected string PickerClass =>
             new CssBuilder("mud-picker")
@@ -174,6 +170,13 @@ namespace MudBlazor
         protected bool GetDisabledState() => Disabled || ParentDisabled;
 
         /// <summary>
+        /// If true, the input will not have an underline.
+        /// </summary>
+        [Parameter]
+        [Category(CategoryTypes.FormComponent.Appearance)]
+        public bool DisableUnderLine { get; set; }
+
+        /// <summary>
         /// If true, no date or time can be defined.
         /// </summary>
         [Parameter]
@@ -269,6 +272,20 @@ namespace MudBlazor
         /// </summary>
         [Parameter]
         public EventCallback<string> TextChanged { get; set; }
+
+        /// <summary>
+        /// If true and Editable is true, update Text immediately on typing.
+        /// If false, Text is updated only on Enter or loss of focus.
+        /// </summary>
+        [Parameter]
+        [Category(CategoryTypes.FormComponent.Behavior)]
+        public bool ImmediateText { get; set; }
+
+        /// <summary>
+        /// Fired when the text input is clicked.
+        /// </summary>
+        [Parameter]
+        public EventCallback<MouseEventArgs> OnClick { get; set; }
 
         /// <summary>
         /// The currently selected string value (two-way bindable)
@@ -392,10 +409,21 @@ namespace MudBlazor
             }
         }
 
+        [Obsolete($"Use {nameof(ResetValueAsync)} instead. This will be removed in v7")]
+        [ExcludeFromCodeCoverage]
         protected override void ResetValue()
         {
             _inputReference?.Reset();
             base.ResetValue();
+        }
+
+        protected override async Task ResetValueAsync()
+        {
+            if (_inputReference is not null)
+            {
+                await _inputReference.ResetAsync();
+            }
+            await base.ResetValueAsync();
         }
 
         protected internal MudTextField<string> _inputReference;
@@ -464,6 +492,15 @@ namespace MudBlazor
                 });
                 _keyInterceptor.KeyDown += HandleKeyDown;
             }
+        }
+
+        private async Task OnClickAsync(MouseEventArgs args)
+        {
+            if (!Editable)
+                ToggleState();
+
+            if (OnClick.HasDelegate)
+                await OnClick.InvokeAsync(args);
         }
 
         protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -555,11 +592,13 @@ namespace MudBlazor
                 if (_keyInterceptor != null)
                 {
                     _keyInterceptor.KeyDown -= HandleKeyDown;
-                    _keyInterceptor.Dispose();
+                    if (IsJSRuntimeAvailable)
+                    {
+                        _keyInterceptor.Dispose();
+                    }
                 }
 
             }
         }
-
     }
 }

@@ -25,6 +25,7 @@
                               @ref="InputReference"
                               @attributes="UserAttributes"
                               InputType="@InputType"
+                              InputMode="@InputMode"
                               Lines="@Lines"
                               Style="@Style"
                               Variant="@Variant"
@@ -47,11 +48,11 @@
                               ErrorId="@ErrorId"
                               Immediate="@Immediate"
                               Margin="@Margin"
-                              OnBlur="@OnBlurred"
-                              OnKeyDown="@InvokeKeyDown"
+                              OnBlur="@OnBlurredAsync"
+                              OnKeyDown="@InvokeKeyDownAsync"
                               OnInternalInputChanged="OnChange"
                               OnKeyPress="@InvokeKeyPress"
-                              OnKeyUp="@InvokeKeyUp"
+                              OnKeyUp="@InvokeKeyUpAsync"
                               KeyDownPreventDefault="KeyDownPreventDefault"
                               KeyPressPreventDefault="KeyPressPreventDefault"
                               KeyUpPreventDefault="KeyUpPreventDefault"
@@ -66,6 +67,7 @@
                              @attributes="UserAttributes"
                              Mask="@_mask"
                              InputType="@InputType"
+                             InputMode="@InputMode"
                              Lines="@Lines"
                              Style="@Style"
                              Variant="@Variant"
@@ -73,7 +75,7 @@
                              Value="@Text"
                              ValueChanged="OnMaskedValueChanged"
                              Placeholder="@Placeholder"
-                            Disabled=@GetDisabledState()
+                             Disabled=@GetDisabledState()
                              DisableUnderLine="@DisableUnderLine"
                              ReadOnly="@GetReadOnlyState()"
                              MaxLength="@MaxLength"
@@ -85,7 +87,7 @@
                              OnAdornmentClick="@OnAdornmentClick"
                              Error="@Error"
                              Immediate="@Immediate"
-                             Margin="@Margin" OnBlur="@OnBlurred"
+                             Margin="@Margin" OnBlur="@OnBlurredAsync"
                              Clearable="@Clearable"
                              OnClearButtonClick="@OnClearButtonClick"/>
                 }

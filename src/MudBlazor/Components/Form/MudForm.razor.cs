@@ -267,6 +267,7 @@ namespace MudBlazor
         /// <summary>
         /// Reset all form controls and reset their validation state.
         /// </summary>
+        [Obsolete($"Use {nameof(ResetAsync)} instead. This will ve removed in v7")]
         public void Reset()
         {
             foreach (var control in _formControls.ToArray())
@@ -277,6 +278,24 @@ namespace MudBlazor
             foreach (var form in ChildForms)
             {
                 form.Reset();
+            }
+
+            EvaluateForm(debounce: false);
+        }
+
+        /// <summary>
+        /// Reset all form controls and reset their validation state.
+        /// </summary>
+        public async Task ResetAsync()
+        {
+            foreach (var control in _formControls.ToArray())
+            {
+                await control.ResetAsync();
+            }
+
+            foreach (var form in ChildForms)
+            {
+                await form.ResetAsync();
             }
 
             EvaluateForm(debounce: false);
@@ -339,6 +358,11 @@ namespace MudBlazor
         public void Dispose()
         {
             _timer?.Dispose();
+            if (ParentMudForm != null)
+            {
+                ParentMudForm.ChildForms.Remove(this);
+                ParentMudForm.EvaluateForm(); // Need this to refresh the form state
+            }
         }
     }
 }
